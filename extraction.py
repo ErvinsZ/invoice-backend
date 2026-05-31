@@ -181,9 +181,17 @@ def extract_with_gemini(
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
             temperature=0,
+            # Large invoices produce a lot of JSON; a low cap silently truncates
+            # the response and breaks JSON parsing. Give it generous headroom.
+            max_output_tokens=65536,
         ),
     )
-    return _decode_json(resp.text)
+    text = resp.text
+    if not text or not text.strip():
+        # Empty response — usually a safety block or a truncated/empty candidate.
+        reason = getattr(getattr(resp, "candidates", [None])[0], "finish_reason", None)
+        raise RuntimeError(f"Gemini returned an empty response (finish_reason={reason}).")
+    return _decode_json(text)
 
 
 Extractor = Callable[[bytes], dict[str, Any]]
